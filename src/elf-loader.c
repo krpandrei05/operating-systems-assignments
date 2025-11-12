@@ -13,6 +13,8 @@
 #include <elf.h>
 // Includ header-ul unde este declarata functia memcpy()
 #include <string.h>
+// Includ header-ul unde este declarata structura rlimit, macro-ul RLIM_INFINITY, respectiv functia getrlimit()
+#include <sys/resource.h>
 
 void *map_elf(const char *filename)
 {
@@ -169,7 +171,122 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	 *	- auxv vector (with entries like AT_PHDR, AT_PHENT, AT_PHNUM, etc.)
 	 * Note: Beware of the AT_RANDOM, AT_PHDR entries, the application will crash if you do not set them up properly.
 	 */
-	void *sp = NULL;
+
+	// rlimit => soft limit, hard limit
+	struct rlimit stack_limit;
+	unsigned long stack_size;
+
+	// Cer limitele sistemului pentru stiva
+	if (getrlimit(RLIMIT_STACK, &stack_limit) == -1) {
+		perror("getrlimit");
+		exit(1);
+	}
+
+	// Daca sistemul a impus limita curenta a stivei = inifnit, setez la o valoare rezonabila
+	// Altfel, setez limita stivei cea impusa de sistem
+	if (stack_limit.rlim_cur == RLIM_INFINITY)
+		stack_size = 8 * 1024 * 1024; // 8 MB
+	else
+		stack_size = stack_limit.rlim_cur;
+
+// I. Rezerv o zona de memorie pentru stiva
+	void *sp_bottom = mmap(NULL, stack_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+	if (sp_bottom == MAP_FAILED) {
+		perror("mmap stack");
+		exit(1);
+	}
+
+	// Masca pentru alinierea stivei (16 bytes)
+	unsigned long mask_stack = ~0xF;
+
+	// Incep sa pun datele la cea mai mare adresa (stiva "creste" de sus in jos)
+	void *sp = sp_bottom + stack_size;
+
+	// Aliniez stiva inainte sa pun date in ea
+	sp = (void *)((unsigned long)sp & mask_stack);
+
+// II. Pun stringurile brute pentru argv si envp pe stiva
+	// Contorizez numarul variabilelor envp
+	int envc = 0;
+
+	while (envp[envc] != NULL)
+		envc++;
+
+	// new_envp stocheaza adresele string-urilor variabilelor de mediu
+	char *new_envp[envc + 1];
+
+	for (i = 0; i < envc; i++) {
+		// "+1" pentru '\0'
+		sp -= strlen(envp[i]) + 1;
+		memcpy(sp, envp[i], strlen(envp[i]) + 1);
+		new_envp[i] = (char *)sp;
+	}
+	new_envp[envc] = NULL;
+
+	// new_argv stocheaza adresele string-urilor argumentelor din CLI
+	char *new_argv[argc + 1];
+
+	for (i = 0; i < argc; i++) {
+		sp -= strlen(argv[i]) + 1;
+		memcpy(sp, argv[i], strlen(argv[i]) + 1);
+		new_argv[i] = (char *)sp;
+	}
+	new_argv[argc] = NULL;
+
+	// "3020: random gap padded to 16B boundary" (Documentatie)
+	sp = (void *)((unsigned long)sp & mask_stack);
+
+// III. auxv data
+	// Pun 16 random bytes pe stiva (Zona la care pointeaza AT_RANDOM) pentru securitate impotriva SSP (Stack Smashing Protection)
+	unsigned char random_bytes[16];
+	int random_fd = open("/dev/urandom", O_RDONLY);
+
+	if (random_fd < 0) {
+		perror("/dev/urandom");
+		memset(random_bytes, 0, 16);
+	} else {
+		read(random_fd, random_bytes, 16);
+		close(random_fd);
+	}
+
+	// Pun pe stiva cei 16 bytes random
+	sp -= 16;
+	memcpy(sp, random_bytes, 16);
+	void *AT_RANDOM_ptr = sp;
+
+// IV. Aliniez stiva (obligatoriu la 16 bytes pe x86-64 => ABI)
+	// "3000: zero padding to align stack" (Documentatie)
+	sp = (void *)((unsigned long)sp & mask_stack);
+
+// V. Pun pe stiva vectorul auxiliar auxv (cheie -> valoare, de sus in jos)
+	// Creez un pointer de tipul unsigned long pt usurinta
+	unsigned long *stack_ptr = (unsigned long *)sp;
+
+	// Valoare
+	*(--stack_ptr) = 0;
+	// Cheie
+	*(--stack_ptr) = AT_NULL;
+
+	// Valoare
+	*(--stack_ptr) = (unsigned long)AT_RANDOM_ptr;
+	// Cheie
+	*(--stack_ptr) = AT_RANDOM;
+
+// VI. Pun pe stiva adresele string-urilor brute ale lui envp, resp argv si la final argc
+	// Le pun in ordine descrescatoare (NULL-ul se afla in sir)
+	for (i = envc; i >= 0; i--)
+		*(--stack_ptr) = (unsigned long)new_envp[i];
+
+	for (i = argc; i >= 0; i--)
+		*(--stack_ptr) = (unsigned long)new_argv[i];
+
+	*(--stack_ptr) = (unsigned long)argc;
+
+// VII. Setez pozitia finala a pointer-ului stivei (sp)
+	sp = (void *)stack_ptr;
+
+	// void *sp = NULL;
 
 	/**
 	 * TODO: Support Static PIE Executables
