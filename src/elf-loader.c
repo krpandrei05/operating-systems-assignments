@@ -130,6 +130,28 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 
 			// Copierea memoriei pentru segmentele PT_LOAD
 			memcpy(segment + page_offset, elf_contents + ph_i->p_offset, ph_i->p_filesz);
+
+			// Task 3:  Load memory regions with correct permissions
+
+			// In variabila flags retin permisiunile pentru mmap()
+			int flags = 0;
+
+			// Permisiunea de citire (READ)
+			if (ph_i->p_flags & PF_R)
+				flags |= PROT_READ;
+			// Permisiunea de scriere (WRITE)
+			if (ph_i->p_flags & PF_W)
+				flags |= PROT_WRITE;
+			// Permisiunea de executare (EXECUTABLE)
+			if (ph_i->p_flags & PF_X)
+				flags |= PROT_EXEC;
+
+			// Modific permisiunile pe zone mapate/rezervate
+			if (mprotect(segment, map_size, flags) == -1) {
+				// Afisiez mesajul/motivul de eroare pentru mprotect()
+				perror("mprotect");
+				exit(1);
+			}
 		}
 	}
 
