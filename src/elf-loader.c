@@ -11,6 +11,8 @@
 
 // Includ header-ul unde este declarat macro-ul ELFCLASS64
 #include <elf.h>
+// Includ header-ul unde este declarata functia memcpy()
+#include <string.h>
 
 void *map_elf(const char *filename)
 {
@@ -70,6 +72,67 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	 * - Map the segments in memory. Permissions can be RWX for now.
 	 */
 
+	Elf64_Ehdr *ELF_header = (Elf64_Ehdr *)elf_contents;
+	Elf64_Phdr *Program_header_table = (Elf64_Phdr *)(elf_contents + ELF_header->e_phoff);
+
+	// In cazul asta, page_size == p_align == 4kb
+	// Pentru genericitate, pt un fisier mai vechi unde p_align = 4kb, dar pe un MacM1 page_size = 16kb,
+	//trebuie facut sysconf
+	long page_size = sysconf(_SC_PAGE_SIZE);
+
+	// Masca pentru aliniere la 4kb (pt mmap)
+	unsigned long mask = ~(page_size - 1);
+
+	// Offset-ul in pagina unde trebuie sa copiez segmentul
+	unsigned long page_offset;
+
+	// Dimensiunea memoriei rezervate
+	unsigned long map_size;
+
+	// Adresa aliata unde voi rezerva memorie (alinierea este obligatorie pt mmap)
+	void *aligned_mmap_addr = NULL;
+
+	// Adresa propriu-zisa unde voi scrie byte-urile
+	void *mmap_addr = NULL;
+
+	int i;
+	// Al i-lea segment
+	Elf64_Phdr *ph_i = NULL;
+
+	// Adresa rezultata dupa mmap()
+	void *segment = NULL;
+
+	for (i = 0; i < ELF_header->e_phnum; i++) {
+		if (Program_header_table[i].p_type == PT_LOAD) {
+			ph_i = &Program_header_table[i];
+
+			// Verific proprietatea de aliniere
+			if (ph_i->p_align > 1) {
+				if ((ph_i->p_vaddr % ph_i->p_align) != (ph_i->p_offset % ph_i->p_align)) {
+					fprintf(stderr, "ELF file is invalid or corrupt!\n");
+					exit(5);
+				}
+			}
+
+			mmap_addr = (void *)(ph_i->p_vaddr);
+			aligned_mmap_addr = (void *)((unsigned long)mmap_addr & mask);
+			page_offset = mmap_addr - aligned_mmap_addr;
+			map_size = ph_i->p_memsz + page_offset;
+
+			// Maparea initiala cu toate permisiunile (RWX)
+			segment = mmap(aligned_mmap_addr, map_size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
+
+			// Afisez mesajul/motivul de eroare (stocat in errno) pentru mmap()
+			if (segment == MAP_FAILED) {
+				perror("mmap");
+				exit(1);
+			}
+
+			// Copierea memoriei pentru segmentele PT_LOAD
+			memcpy(segment + page_offset, elf_contents + ph_i->p_offset, ph_i->p_filesz);
+		}
+	}
+
 	/**
 	 * TODO: Load Memory Regions with Correct Permissions
 	 * For each PT_LOAD segment:
@@ -94,7 +157,7 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	 */
 
 	// TODO: Set the entry point and the stack pointer
-	void (*entry)() = NULL;
+	void (*entry)() = (void (*)())(ELF_header->e_entry);
 
 	// Transfer control
 	__asm__ __volatile__(
