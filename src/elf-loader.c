@@ -9,6 +9,9 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 
+// Includ header-ul unde este declarat macro-ul ELFCLASS64
+#include <elf.h>
+
 void *map_elf(const char *filename)
 {
 	// This part helps you store the content of the ELF file inside the buffer.
@@ -44,6 +47,21 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	 * Validate ELF magic bytes - "Not a valid ELF file" + exit code 3 if invalid.
 	 * Validate ELF class is 64-bit (ELFCLASS64) - "Not a 64-bit ELF" + exit code 4 if invalid.
 	 */
+
+    // Verific primii 4 bytes (magic) din continutul fisierului ELF
+	unsigned char *elf = (unsigned char *)elf_contents;
+
+	// Puteam sa fac si memcmp(elf, ELFMAG, 4) != 0
+	if (elf[0] != 0x7f || elf[1] != 0x45 || elf[2] != 0x4c || elf[3] != 0x46) {
+		fprintf(stderr, "Not a valid ELF file");
+		exit(3);
+	}
+
+    // Verific daca este un ELF pe 64 biti
+	if (elf[4] != ELFCLASS64) {
+		fprintf(stderr, "Not a 64-bit ELF");
+		exit(4);
+	}
 
 	/**
 	 * TODO: Load PT_LOAD segments
