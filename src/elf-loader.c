@@ -104,6 +104,46 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	// Adresa rezultata dupa mmap()
 	void *segment = NULL;
 
+// Task 5: PIE
+	// Base-ul pentru PIE (Position Independent Executable)
+	// base == 0 (NON-PIE) || base != 0 (PIE)
+	unsigned long base = 0;
+
+	// Verificare daca e PIE
+	if (ELF_header->e_type == ET_DYN) {
+		// Adresa virtuala de inceput a blocului de memorie pt PIE
+		unsigned long block_vaddr_min = UINT64_MAX;
+		// Adresa virtuala de final a blocului de memorie pt PIE
+		unsigned long block_vaddr_max = 0;
+
+		for (i = 0; i < ELF_header->e_phnum; i++) {
+			if (Program_header_table[i].p_type == PT_LOAD) {
+				ph_i = &Program_header_table[i];
+
+				if (block_vaddr_min > ph_i->p_vaddr)
+					block_vaddr_min = ph_i->p_vaddr;
+				// "+memsz" ca sa acopar intreg blocul necesar pentru copiere a memoriei
+				if (block_vaddr_max < ph_i->p_vaddr + ph_i->p_memsz)
+					block_vaddr_max = ph_i->p_vaddr + ph_i->p_memsz;
+			}
+		}
+
+		// Aliniez adresa la 4kb
+		unsigned long aligned_block_vaddr_min = block_vaddr_min & ~(page_size - 1);
+
+		// Adun 4kb si apoi aliniez la 4kb (sa nu pierd memorie necesara pt scriere)
+		unsigned long aligned_block_vaddr_max = (block_vaddr_max + page_size - 1) & ~(page_size - 1);
+
+		// Dimensiunea memoriei necesara pentru toate segmentele Load ale executabilului PIE
+		unsigned long pie_mmap_size = block_vaddr_max - block_vaddr_min;
+
+		// Rezerva o zona de memorie capabila sa stocheze toate segmentele de load pt PIE
+		segment = mmap(NULL, pie_mmap_size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+
+		// Base-ul este random la fiecare apel al functiei load_and_run() -> depinde de mmap
+		base = (unsigned long)segment - Program_header_table[0].p_vaddr;
+	}
+
 	for (i = 0; i < ELF_header->e_phnum; i++) {
 		if (Program_header_table[i].p_type == PT_LOAD) {
 			ph_i = &Program_header_table[i];
@@ -116,7 +156,8 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 				}
 			}
 
-			mmap_addr = (void *)(ph_i->p_vaddr);
+			// Adresele vor depinde de base
+			mmap_addr = (void *)(base + ph_i->p_vaddr);
 			aligned_mmap_addr = (void *)((unsigned long)mmap_addr & mask);
 			page_offset = mmap_addr - aligned_mmap_addr;
 			map_size = ph_i->p_memsz + page_offset;
@@ -296,7 +337,9 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	 */
 
 	// TODO: Set the entry point and the stack pointer
-	void (*entry)() = (void (*)())(ELF_header->e_entry);
+
+	// Actualizez entry_point-ul sa depinda de base
+	void (*entry)() = (void (*)())(ELF_header->e_entry + base);
 
 	// Transfer control
 	__asm__ __volatile__(
