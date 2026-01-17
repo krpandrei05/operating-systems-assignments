@@ -329,7 +329,20 @@ void *handle_service_req(void *arg)
 
 int main(void)
 {
-	// TODO: Implement dispatcher functionality
+    // Cream directorul de pipe uri dispatcher
+    mkdir(DISPATCHER_PIPE_DIR, 0777);
 
-	return 0;
+    // Cream directorul de pipe uri de comunicare
+    mkdir(PIPES_DIR, 0777);
+
+    // Cream thread urile pt gestionarea cererilor de instalare si conexiuni
+    pthread_t st, ct;
+    pthread_create(&st, NULL, handle_service_req, NULL);
+    pthread_create(&ct, NULL, handle_client_req, NULL);
+
+    // Asteptam ca thread urile sa se termine
+    pthread_join(st, NULL);
+    pthread_join(ct, NULL);
+
+    return 0;
 }
