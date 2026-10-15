@@ -8,12 +8,12 @@ Each project is implemented in **C** and targets core OS concepts, interfacing d
 
 | # | Project | Topics |
 |---|---------|--------|
-| 1 | [Mini-Libc](https://github.com/krpandrei05/assignment-mini-libc) | Custom C standard library, syscall wrappers |
-| 2 | [ELF Loader](https://github.com/krpandrei05/assignment-elf-loader) | Binary parsing, segment mapping, program execution |
-| 3 | [Parallel Firewall](https://github.com/krpandrei05/assignment-parallel-firewall) | Multithreading, mutex/semaphore synchronization |
-| 4 | [Mini-Shell](https://github.com/krpandrei05/assignment-mini-shell) | POSIX shell, pipes, redirection, job control |
-| 5 | [Async Web Server](https://github.com/krpandrei05/assignment-async-web-server) | epoll, non-blocking I/O, event-driven architecture |
-| 6 | [LPC Dispatcher](https://github.com/vladdre/Hackathon-SO) | Named pipes, IPC, multithreading, custom RPC protocol |
+| 1 | [Mini-Libc](https://github.com/krpandrei05/operating-systems-assignments/tree/main/mini-libc) | Custom C standard library, syscall wrappers |
+| 2 | [ELF Loader](https://github.com/krpandrei05/operating-systems-assignments/tree/main/elf-loader) | Binary parsing, segment mapping, program execution |
+| 3 | [Parallel Firewall](https://github.com/krpandrei05/operating-systems-assignments/tree/main/parallel-firewall) | Multithreading, mutex/semaphore synchronization |
+| 4 | [Mini-Shell](https://github.com/krpandrei05/operating-systems-assignments/tree/main/mini-shell) | POSIX shell, pipes, redirection, job control |
+| 5 | [Async Web Server](https://github.com/krpandrei05/operating-systems-assignments/tree/main/async-web-server) | epoll, non-blocking I/O, event-driven architecture |
+| 6 | [LPC Dispatcher](https://github.com/krpandrei05/operating-systems-assignments/tree/main/lpc-dispatcher) | Named pipes, IPC, multithreading, custom RPC protocol |
 
 ## Skills Demonstrated
 
